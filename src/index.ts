@@ -1,5 +1,9 @@
+import { handleSetup } from "./setup";
+
 export interface Env {
   DISCORD_PUBLIC_KEY: string;
+  DISCORD_BOT_TOKEN: string;
+  HMAC_KEY: string;
 }
 
 function hexToBytes(hex: string): Uint8Array {
@@ -20,7 +24,6 @@ async function verifyDiscordRequest(
     return { valid: false, body: "" };
   }
 
-  // Ham gövde üzerinden doğrulama. JSON'a çevirip sonra imzalamayın.
   const body = await request.text();
 
   const key = await crypto.subtle.importKey(
@@ -43,7 +46,8 @@ async function verifyDiscordRequest(
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
-    if (request.method !== "POST" || new URL(request.url).pathname !== "/interactions") {
+    const url = new URL(request.url);
+    if (request.method !== "POST" || url.pathname !== "/interactions") {
       return new Response("Not found", { status: 404 });
     }
 
@@ -54,12 +58,16 @@ export default {
 
     const interaction = JSON.parse(body);
 
-    // Discord, endpoint'i kaydederken PING (type 1) gönderir. PONG ile yanıtlanmalı.
+    // PING (type 1), endpoint kaydı için
     if (interaction.type === 1) {
       return Response.json({ type: 1 });
     }
 
-    // Diğer etkileşimler (slash komutu vb.) sonraki adımda eklenecek.
-    return Response.json({ type: 4, data: { content: "Not implemented yet", flags: 64 } });
+    // Slash komutu (type 2)
+    if (interaction.type === 2 && interaction.data?.name === "setup") {
+      return handleSetup(interaction, env, url.origin);
+    }
+
+    return Response.json({ type: 4, data: { content: "Unknown command.", flags: 64 } });
   },
 } satisfies ExportedHandler<Env>;
