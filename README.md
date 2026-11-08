@@ -1,8 +1,8 @@
 <p align="center">
-  <img src="logo.svg" width="128" alt="Discord Verify Bot logo">
+  <img src="logo.svg" width="128" alt="Authify logo">
 </p>
 
-<h1 align="center">Discord Verify Bot</h1>
+<h1 align="center">Authify</h1>
 
 <p align="center">
   Open-source human verification for Discord.<br>
@@ -16,14 +16,14 @@
 
 ---
 
-## Why this bot
+## Why Authify
 
-- **Open source.** Every line that runs on the verification server is in this repository.
-- **No personal data stored.** No IP addresses, emails, or tokens are kept. See [PRIVACY.md](PRIVACY.md).
+- **Open source.** The code that handles verification is in this repository.
+- **No personal data stored.** No IP addresses, emails, or Discord tokens are kept. See [PRIVACY.md](PRIVACY.md).
 - **Free to run.** Built on Cloudflare Workers and Turnstile free tiers.
 - **Simple setup.** One slash command creates the verification message.
 
-## Add the bot to your server
+## Add the official bot to your server
 
 1. Open this link and choose your server (you need the **Manage Server** permission):
 
@@ -47,6 +47,8 @@ Run this in any channel:
 
 **Recommended:** Deny *View Channel* for `@everyone` and allow it only for `@Verified`. New members will then see only the verification channel.
 
+**Note:** Verification buttons are tied to the roles they were created with. If you change roles later, run `/setup` again and delete the old message.
+
 ## How it works
 
 1. A member clicks **Verify** on the message.
@@ -54,11 +56,48 @@ Run this in any channel:
 3. Discord asks the member to authorize the `identify` scope, which provides only the user ID.
 4. The bot grants the verified role and removes the unverified role, if set.
 
+## Run your own instance
+
+You can run Authify on your own Cloudflare account and Discord application. This is useful if you do not want to rely on the official bot.
+
+**Requirements:** Node.js LTS, a Cloudflare account (free plan), a Discord account, Git.
+
+1. **Create a Discord application** at the [Developer Portal](https://discord.com/developers/applications). Note the Application ID, Public Key, Bot Token, and Client Secret.
+2. **Clone and install:**
+   ```
+   git clone https://github.com/MeTheHan/discord-verify-bot.git
+   cd discord-verify-bot
+   npm install
+   ```
+3. **Create a Turnstile widget** in the Cloudflare dashboard. Add your Worker's hostname to it. Note the site key and secret key.
+4. **Set the Turnstile site key** in `wrangler.jsonc` under `vars` as `TURNSTILE_SITE_KEY`. The site key is public.
+5. **Add secrets** with Wrangler. Each command prompts for the value. Never put these values in code or in the repository:
+   ```
+   npx wrangler secret put DISCORD_PUBLIC_KEY
+   npx wrangler secret put DISCORD_BOT_TOKEN
+   npx wrangler secret put DISCORD_CLIENT_ID
+   npx wrangler secret put DISCORD_CLIENT_SECRET
+   npx wrangler secret put TURNSTILE_SECRET
+   npx wrangler secret put HMAC_KEY
+   ```
+   Generate `HMAC_KEY` with a long random value, at least 32 bytes. For example, `openssl rand -hex 32` or a password manager's generator.
+6. **Deploy:**
+   ```
+   npx wrangler deploy
+   ```
+7. **Configure Discord:**
+   - In **OAuth2 → Redirects**, add `https://<your-worker>/callback`.
+   - In **Installation**, set the install link to Discord-provided with scopes `bot` and `applications.commands`, and permissions `268437504`.
+   - In **Bot**, decide whether the bot should be public. A private bot can only be added by you.
+8. **Register the `/setup` command.** Use the Discord API or a script that calls `PUT /applications/{id}/commands`. Global commands can take up to an hour to appear.
+
+Keep your `.dev.vars` file local. It is listed in `.gitignore` and must never be committed.
+
 ## Privacy and security
 
 - [PRIVACY.md](PRIVACY.md): what is and is not stored.
 - [SECURITY.md](SECURITY.md): how to report vulnerabilities privately.
-- Releases are tagged. Compare the running version with the code at the matching tag.
+- Releases are tagged. The code at a tag is the code that was reviewed for that version.
 
 ## Limits
 
