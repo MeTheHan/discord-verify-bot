@@ -33,7 +33,9 @@ async function countRoleHolders(
       },
     ).catch(() => null);
 
-    if (!res || !res.ok) throw new Error("member fetch failed");
+    if (res?.status === 429) throw new Error("rate limited");
+    if (!res) throw new Error("network error");
+    if (!res.ok) throw new Error(`member fetch failed: HTTP ${res.status}`);
 
     const members = (await res.json().catch(() => null)) as Member[] | null;
     if (!Array.isArray(members)) throw new Error("bad member response");
@@ -65,7 +67,7 @@ async function sendFollowUp(env: Env, interactionToken: string, content: string)
   ).catch(() => null);
 }
 
-export function handleStatistics(interaction: any, env: Env, ctx: ExecutionContext): Response {
+export async function handleStatistics(interaction: any, env: Env, ctx: ExecutionContext): Promise<Response> {
   if (!hasManageGuild(interaction.member?.permissions)) {
     return ephemeral("You need the Manage Server permission to use this command.");
   }
@@ -75,6 +77,12 @@ export function handleStatistics(interaction: any, env: Env, ctx: ExecutionConte
   const guildId = interaction.guild_id;
   if (!isSnowflake(roleId) || !isSnowflake(guildId)) {
     return ephemeral("Invalid request.");
+  }
+
+  // Sunucu başına sıkı sınır. Ayrı binding olduğu için doğrulama akışını etkilemez.
+  const stats = await env.STATS_LIMITER.limit({ key: guildId });
+  if (!stats.success) {
+    return ephemeral("Statistics can be checked once every minute per server. Please try again later.");
   }
 
   const token = interaction.token;
@@ -91,8 +99,13 @@ export function handleStatistics(interaction: any, env: Env, ctx: ExecutionConte
         text = capped
           ? `Scanned the first ${PAGE_SIZE * MAX_PAGES} members. Verified members found: **${count}**`
           : `Members with the verified role: **${count}**`;
-      } catch {
-        text = "Could not count members right now. Please try again later.";
+      } catch (err) {
+        // Yalnızca hata türünü yazar. Kullanıcı ya da sunucu bilgisi içermez.
+        console.log("statistics error:", err instanceof Error ? err.message : "unknown");
+        text =
+          err instanceof Error && err.message === "rate limited"
+            ? "Discord is rate limiting this request. Please try again in a few minutes."
+            : "Could not count members right now. Please try again later.";
       }
       await sendFollowUp(env, token, `${text}\nCounted live from Discord. Nothing is stored.`);
     })(),

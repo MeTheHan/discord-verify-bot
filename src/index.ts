@@ -14,6 +14,7 @@ export interface Env {
   TURNSTILE_SITE_KEY: string;
   HMAC_KEY: string;
   RATE_LIMITER: { limit(opts: { key: string }): Promise<{ success: boolean }> };
+  STATS_LIMITER: { limit(opts: { key: string }): Promise<{ success: boolean }> };
 }
 
 export default {
