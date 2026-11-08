@@ -1,7 +1,10 @@
 import type { Env } from "./index";
 import { isSnowflake, verifyHex, b64urlDecode, htmlPage } from "./util";
 
-// GET /callback: Discord OAuth dönüşü. Rolü ver, token'ı sakla.
+const DISCORD_API = "https://discord.com/api/v10";
+const TIMEOUT_MS = 5000;
+
+// GET /callback: Discord OAuth dönüşü. Rol verme, token'ı saklamadan yapılır.
 export async function handleCallback(url: URL, env: Env): Promise<Response> {
   const code = url.searchParams.get("code");
   const state = url.searchParams.get("state");
@@ -9,17 +12,25 @@ export async function handleCallback(url: URL, env: Env): Promise<Response> {
     return htmlPage("Invalid request.", 400);
   }
 
-  const [payloadB64, sig] = state.split(".");
+  const parts = state.split(".");
+  if (parts.length !== 2) {
+    return htmlPage("Invalid request.", 400);
+  }
+  const [payloadB64, sig] = parts;
   if (!payloadB64 || !sig || !(await verifyHex(env.HMAC_KEY, `state.${payloadB64}`, sig))) {
     return htmlPage("This link has expired or was modified. Please start again from the verify button in the server.", 400);
   }
 
-  let payload: any;
+  let decoded: unknown;
   try {
-    payload = JSON.parse(b64urlDecode(payloadB64));
+    decoded = JSON.parse(b64urlDecode(payloadB64));
   } catch {
     return htmlPage("Invalid request.", 400);
   }
+  if (!decoded || typeof decoded !== "object") {
+    return htmlPage("Invalid request.", 400);
+  }
+  const payload = decoded as { g?: unknown; v?: unknown; u?: unknown; exp?: unknown };
 
   const now = Math.floor(Date.now() / 1000);
   if (typeof payload.exp !== "number" || payload.exp < now || payload.exp > now + 300) {
@@ -28,11 +39,19 @@ export async function handleCallback(url: URL, env: Env): Promise<Response> {
   if (!isSnowflake(payload.g) || !isSnowflake(payload.v) || !(payload.u === "" || isSnowflake(payload.u))) {
     return htmlPage("Invalid request.", 400);
   }
+  const guildId = payload.g as string;
+  const verifiedRole = payload.v as string;
+  const unverifiedRole = typeof payload.u === "string" ? payload.u : "";
 
-  const redirectUri = `${url.origin}/callback`;
+  // Limit, Discord'a maliyet veren ilk adımdan önce uygulanır.
+  // Yalnızca geçerli state ve gerçek bir Discord yetkilendirmesi sayılır.
+  const limit = await env.RATE_LIMITER.limit({ key: guildId });
+  if (!limit.success) {
+    return htmlPage("Too many verifications in this server right now. Please wait a minute and try again.", 429);
+  }
 
-  // Code'u access token'a çevir
-  const tokenRes = await fetch("https://discord.com/api/v10/oauth2/token", {
+  // OAuth code'unu access token'a çevir
+  const tokenRes = await fetch(`${DISCORD_API}/oauth2/token`, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({
@@ -40,34 +59,53 @@ export async function handleCallback(url: URL, env: Env): Promise<Response> {
       client_secret: env.DISCORD_CLIENT_SECRET,
       grant_type: "authorization_code",
       code,
-      redirect_uri: redirectUri,
+      redirect_uri: `${url.origin}/callback`,
     }),
-  });
+    signal: AbortSignal.timeout(TIMEOUT_MS),
+  }).catch(() => null);
+
+  if (!tokenRes) {
+    return htmlPage("Could not reach Discord. Please try again.", 503);
+  }
   if (!tokenRes.ok) {
     return htmlPage("Discord authorization failed. Please try again.", 400);
   }
-  const { access_token } = (await tokenRes.json()) as { access_token: string };
+  const tokenData = (await tokenRes.json().catch(() => null)) as { access_token?: unknown } | null;
+  if (!tokenData || typeof tokenData.access_token !== "string") {
+    return htmlPage("Discord authorization failed. Please try again.", 400);
+  }
+  const accessToken: string = tokenData.access_token;
 
-  // Kullanıcı ID'sini al. Token burada kullanılır, saklanmaz.
-  const userRes = await fetch("https://discord.com/api/v10/users/@me", {
-    headers: { Authorization: `Bearer ${access_token}` },
-  });
-  if (!userRes.ok) {
+  // Kullanıcı ID'sini al. Access token burada kullanılır, saklanmaz.
+  const userRes = await fetch(`${DISCORD_API}/users/@me`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+    signal: AbortSignal.timeout(TIMEOUT_MS),
+  }).catch(() => null);
+
+  const user = userRes?.ok
+    ? ((await userRes.json().catch(() => null)) as { id?: unknown } | null)
+    : null;
+  if (!user || !isSnowflake(user.id)) {
     return htmlPage("Could not read your Discord account. Please try again.", 400);
   }
-  const user = (await userRes.json()) as { id: string };
-  if (!isSnowflake(user.id)) {
-    return htmlPage("Could not read your Discord account. Please try again.", 400);
-  }
+  const userId: string = user.id;
 
-  const memberRoles = `https://discord.com/api/v10/guilds/${payload.g}/members/${user.id}/roles`;
+  const memberRoles = `${DISCORD_API}/guilds/${guildId}/members/${userId}/roles`;
   const headers = {
     Authorization: `Bot ${env.DISCORD_BOT_TOKEN}`,
     "X-Audit-Log-Reason": "Human verification",
   };
 
   // Doğrulanmış rolü ver
-  const add = await fetch(`${memberRoles}/${payload.v}`, { method: "PUT", headers });
+  const add = await fetch(`${memberRoles}/${verifiedRole}`, {
+    method: "PUT",
+    headers,
+    signal: AbortSignal.timeout(TIMEOUT_MS),
+  }).catch(() => null);
+
+  if (!add) {
+    return htmlPage("Could not reach Discord. Please try again.", 503);
+  }
   if (!add.ok) {
     return htmlPage(
       "Could not grant the role. Make sure you are a member of this server, and that the bot's role is above the verified role.",
@@ -76,8 +114,12 @@ export async function handleCallback(url: URL, env: Env): Promise<Response> {
   }
 
   // Varsa doğrulanmamış rolü kaldır. Başarısız olursa kullanıcıyı engellemiyoruz.
-  if (payload.u) {
-    await fetch(`${memberRoles}/${payload.u}`, { method: "DELETE", headers });
+  if (unverifiedRole) {
+    await fetch(`${memberRoles}/${unverifiedRole}`, {
+      method: "DELETE",
+      headers,
+      signal: AbortSignal.timeout(TIMEOUT_MS),
+    }).catch(() => null);
   }
 
   return htmlPage("You are verified. You can return to Discord.", 200);

@@ -1,6 +1,8 @@
 import type { Env } from "./index";
 import { isSnowflake, signHex, verifyHex, b64urlEncode } from "./util";
 
+const SITEVERIFY_URL = "https://challenges.cloudflare.com/turnstile/v0/siteverify";
+
 async function validLinkParams(
   env: Env,
   g: unknown,
@@ -79,24 +81,23 @@ async function onTurnstile(token) {
       "Content-Security-Policy":
         `default-src 'none'; script-src 'nonce-${nonce}' https://challenges.cloudflare.com; ` +
         `style-src 'unsafe-inline'; frame-src https://challenges.cloudflare.com; ` +
-        `connect-src 'self' https://challenges.cloudflare.com; img-src 'self' data:; base-uri 'none'; form-action 'none'`,
+        `connect-src 'self' https://challenges.cloudflare.com; img-src 'self' data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`,
       "Referrer-Policy": "no-referrer",
       "X-Frame-Options": "DENY",
+      "Cache-Control": "no-store",
     },
   });
 }
 
 // POST /verify: Turnstile token'ını sunucuda doğrula, Discord OAuth state'i üret
 export async function handleVerifySubmit(request: Request, env: Env, url: URL): Promise<Response> {
-  let body: any;
-  try {
-    body = await request.json();
-  } catch {
+  const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
+  if (!body || typeof body !== "object") {
     return json({ error: "Bad request." }, 400);
   }
 
-  const { token, g, v, sig } = body ?? {};
-  const u: string = body?.u ?? "";
+  const { token, g, v, sig } = body;
+  const u = typeof body.u === "string" ? body.u : "";
 
   if (typeof token !== "string" || token.length === 0 || token.length > 2048) {
     return json({ error: "Missing verification token." }, 400);
@@ -105,25 +106,23 @@ export async function handleVerifySubmit(request: Request, env: Env, url: URL): 
     return json({ error: "This link is invalid or has been modified." }, 400);
   }
 
-  // Sunucu başına hız sınırı. Anahtar olarak sunucu (guild) ID'si kullanılır, IP değil.
-  const limit = await env.RATE_LIMITER.limit({ key: g });
-  if (!limit.success) {
-    return json({ error: "Too many attempts for this server. Please wait a minute and try again." }, 429);
-  }
-
   // Turnstile'ı sunucuda doğrula. remoteip göndermiyoruz, IP'yi hiçbir yerde kullanmıyoruz.
   const form = new FormData();
   form.append("secret", env.TURNSTILE_SECRET);
   form.append("response", token);
 
-  const vr = await fetch("https://challenges.cloudflare.com/turnstile/v0/siteverify", {
+  const vr = await fetch(SITEVERIFY_URL, {
     method: "POST",
     body: form,
-  });
-  const result = (await vr.json()) as { success: boolean; hostname?: string; action?: string };
+    signal: AbortSignal.timeout(5000),
+  }).catch(() => null);
+
+  const result = vr
+    ? ((await vr.json().catch(() => null)) as { success?: boolean; hostname?: string; action?: string } | null)
+    : null;
 
   // Hostname ve action kontrolü: başka bir siteden alınmış token'ları reddeder
-  if (!result.success || result.hostname !== url.hostname || result.action !== "verify") {
+  if (!result || !result.success || result.hostname !== url.hostname || result.action !== "verify") {
     return json({ error: "Verification failed. Please try again." }, 403);
   }
 
