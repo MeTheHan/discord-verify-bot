@@ -1,5 +1,9 @@
 <p align="center">
-  <img src="logo.svg" width="128" alt="Authify logo">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="logo.png">
+    <source media="(prefers-color-scheme: light)" srcset="light_logo.png">
+    <img src="light_logo.png" width="128" alt="Authify logo">
+  </picture>
 </p>
 
 <h1 align="center">Authify</h1>
