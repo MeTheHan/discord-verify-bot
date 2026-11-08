@@ -31,7 +31,15 @@
 
 2. In **Server Settings → Roles**, drag the bot's role above the role it will grant.
 
-## Setup
+## Commands
+
+| Command | Who can use it | What it does |
+| --- | --- | --- |
+| `/setup` | Manage Server | Posts the verification message to a channel |
+| `/statistics` | Manage Server | Counts members who currently hold the verified role |
+| `/source` | Everyone | Shows the source code link and the security policy |
+
+### `/setup`
 
 Run this in any channel:
 
@@ -49,6 +57,12 @@ Run this in any channel:
 
 **Note:** Verification buttons are tied to the roles they were created with. If you change roles later, run `/setup` again and delete the old message.
 
+### `/statistics`
+
+Counts members who hold the verified role, live from Discord, each time it is run. The result is not stored. This command is limited to once per minute per server and checks at most 5,000 members.
+
+This command uses the **Server Members** privileged intent, which Discord requires to read the member list. No other part of the bot uses privileged intents.
+
 ## How it works
 
 1. A member clicks **Verify** on the message.
@@ -62,7 +76,7 @@ You can run Authify on your own Cloudflare account and Discord application. This
 
 **Requirements:** Node.js LTS, a Cloudflare account (free plan), a Discord account, Git.
 
-1. **Create a Discord application** at the [Developer Portal](https://discord.com/developers/applications). Note the Application ID, Public Key, Bot Token, and Client Secret.
+1. **Create a Discord application** at the [Developer Portal](https://discord.com/developers/applications). Note the Application ID, Public Key, Bot Token, and Client Secret. Under **Bot → Privileged Gateway Intents**, enable **Server Members Intent** if you want to use `/statistics`.
 2. **Clone and install:**
    ```
    git clone https://github.com/MeTheHan/discord-verify-bot.git
@@ -89,7 +103,11 @@ You can run Authify on your own Cloudflare account and Discord application. This
    - In **OAuth2 → Redirects**, add `https://<your-worker>/callback`.
    - In **Installation**, set the install link to Discord-provided with scopes `bot` and `applications.commands`, and permissions `268437504`.
    - In **Bot**, decide whether the bot should be public. A private bot can only be added by you.
-8. **Register the `/setup` command.** Use the Discord API or a script that calls `PUT /applications/{id}/commands`. Global commands can take up to an hour to appear.
+8. **Register the commands.** Set `DISCORD_CLIENT_ID` and `DISCORD_BOT_TOKEN` in a local `.dev.vars` file, then run:
+   ```
+   node scripts/register-commands.mjs
+   ```
+   The script replaces the full command list with `/setup`, `/statistics`, and `/source`. Global commands can take up to an hour to appear.
 
 Keep your `.dev.vars` file local. It is listed in `.gitignore` and must never be committed.
 

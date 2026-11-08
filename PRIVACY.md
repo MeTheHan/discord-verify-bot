@@ -16,7 +16,7 @@ Only short-lived, non-personal counters are kept to limit how many verification 
 
 Request logging is disabled, so request URLs (including OAuth parameters) are not written to logs.
 
-/statistics counts members with the verified role live from Discord when a server admin runs it. The count is shown only to that admin and is not stored.
+/statistics counts members with the verified role live from Discord when a server admin runs it. The count is shown only to that admin and is not stored. This command requires the Server Members privileged intent.
 
 ## Your rights
 
