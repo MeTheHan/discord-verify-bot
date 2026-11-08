@@ -44,7 +44,6 @@ export async function handleCallback(url: URL, env: Env): Promise<Response> {
   const unverifiedRole = typeof payload.u === "string" ? payload.u : "";
 
   // Limit, Discord'a maliyet veren ilk adımdan önce uygulanır.
-  // Yalnızca geçerli state ve gerçek bir Discord yetkilendirmesi sayılır.
   const limit = await env.RATE_LIMITER.limit({ key: guildId });
   if (!limit.success) {
     return htmlPage("Too many verifications in this server right now. Please wait a minute and try again.", 429);
@@ -91,15 +90,39 @@ export async function handleCallback(url: URL, env: Env): Promise<Response> {
   const userId: string = user.id;
 
   const memberRoles = `${DISCORD_API}/guilds/${guildId}/members/${userId}/roles`;
-  const headers = {
+  const botHeaders = {
     Authorization: `Bot ${env.DISCORD_BOT_TOKEN}`,
     "X-Audit-Log-Reason": "Human verification",
   };
 
+  // Kullanıcı zaten doğrulanmış mı? Üye bilgisi alınamazsa normal akışa devam ederiz.
+  const memberRes = await fetch(`${DISCORD_API}/guilds/${guildId}/members/${userId}`, {
+    headers: { Authorization: `Bot ${env.DISCORD_BOT_TOKEN}` },
+    signal: AbortSignal.timeout(TIMEOUT_MS),
+  }).catch(() => null);
+
+  let alreadyVerified = false;
+  if (memberRes?.ok) {
+    const member = (await memberRes.json().catch(() => null)) as { roles?: unknown } | null;
+    alreadyVerified = Array.isArray(member?.roles) && (member.roles as unknown[]).includes(verifiedRole);
+  }
+
+  if (alreadyVerified) {
+    // Doğrulanmış ama hâlâ doğrulanmamış rolü taşıyorsa onu kaldır.
+    if (unverifiedRole) {
+      await fetch(`${memberRoles}/${unverifiedRole}`, {
+        method: "DELETE",
+        headers: botHeaders,
+        signal: AbortSignal.timeout(TIMEOUT_MS),
+      }).catch(() => null);
+    }
+    return htmlPage("You are already verified in this server. You can return to Discord.", 200);
+  }
+
   // Doğrulanmış rolü ver
   const add = await fetch(`${memberRoles}/${verifiedRole}`, {
     method: "PUT",
-    headers,
+    headers: botHeaders,
     signal: AbortSignal.timeout(TIMEOUT_MS),
   }).catch(() => null);
 
@@ -117,7 +140,7 @@ export async function handleCallback(url: URL, env: Env): Promise<Response> {
   if (unverifiedRole) {
     await fetch(`${memberRoles}/${unverifiedRole}`, {
       method: "DELETE",
-      headers,
+      headers: botHeaders,
       signal: AbortSignal.timeout(TIMEOUT_MS),
     }).catch(() => null);
   }
