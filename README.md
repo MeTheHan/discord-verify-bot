@@ -2,7 +2,7 @@
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="logo.png">
     <source media="(prefers-color-scheme: light)" srcset="light_logo.png">
-    <img src="light_logo.png" width="128" alt="Authify logo">
+    <img src="light_logo.png" width="160" alt="Authify logo">
   </picture>
 </p>
 
