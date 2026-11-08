@@ -1,4 +1,5 @@
 import { handleSetup } from "./setup";
+import { handleSource } from "./source";
 import { handleVerifyPage, handleVerifySubmit } from "./verify";
 import { handleCallback } from "./callback";
 import { verifyDiscordRequest } from "./discord";
@@ -41,6 +42,9 @@ export default {
       }
       if (interaction.type === 2 && interaction.data?.name === "setup") {
         return handleSetup(interaction, env, url.origin);
+      }
+      if (interaction.type === 2 && interaction.data?.name === "source") {
+        return handleSource();
       }
       return Response.json({ type: 4, data: { content: "Unknown command.", flags: 64 } });
     }

@@ -12,41 +12,49 @@ const env = Object.fromEntries(
 
 const url = `https://discord.com/api/v10/applications/${env.DISCORD_CLIENT_ID}/commands`;
 
-const command = {
-  name: "setup",
-  description: "Post the human verification message to a channel",
-  default_member_permissions: "32",
-  dm_permission: false,
-  options: [
-    {
-      type: 7,
-      name: "channel",
-      description: "Channel where the verification message will be posted",
-      required: true,
-      channel_types: [0],
-    },
-    {
-      type: 8,
-      name: "verified_role",
-      description: "Role granted after successful verification",
-      required: true,
-    },
-    {
-      type: 8,
-      name: "unverified_role",
-      description: "Optional role removed after verification",
-      required: false,
-    },
-  ],
-};
+// PUT tüm global komut listesini değiştirir. Buradaki her komut kayıtlı kalır,
+// listede olmayanlar silinir. Bu yüzden tüm komutları burada tutuyoruz.
+const commands = [
+  {
+    name: "setup",
+    description: "Post the human verification message to a channel",
+    default_member_permissions: "32",
+    dm_permission: false,
+    options: [
+      {
+        type: 7,
+        name: "channel",
+        description: "Channel where the verification message will be posted",
+        required: true,
+        channel_types: [0],
+      },
+      {
+        type: 8,
+        name: "verified_role",
+        description: "Role granted after successful verification",
+        required: true,
+      },
+      {
+        type: 8,
+        name: "unverified_role",
+        description: "Optional role removed after verification",
+        required: false,
+      },
+    ],
+  },
+  {
+    name: "source",
+    description: "Show where to find Authify's source code",
+  },
+];
 
 const res = await fetch(url, {
-  method: "POST",
+  method: "PUT",
   headers: {
     Authorization: `Bot ${env.DISCORD_BOT_TOKEN}`,
     "Content-Type": "application/json",
   },
-  body: JSON.stringify(command),
+  body: JSON.stringify(commands),
 });
 
 console.log("HTTP", res.status);
