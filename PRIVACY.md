@@ -16,6 +16,8 @@ Only short-lived, non-personal counters are kept to limit how many verification 
 
 Request logging is disabled, so request URLs (including OAuth parameters) are not written to logs.
 
+/statistics counts members with the verified role live from Discord when a server admin runs it. The count is shown only to that admin and is not stored.
+
 ## Your rights
 
 Because we do not store your personal data, there is nothing to export or delete on our side. You can remove the bot's role at any time through Discord, and you can revoke the bot's access in Discord under Settings → Authorized Apps.

@@ -1,5 +1,6 @@
 import { handleSetup } from "./setup";
 import { handleSource } from "./source";
+import { handleStatistics } from "./statistics";
 import { handleVerifyPage, handleVerifySubmit } from "./verify";
 import { handleCallback } from "./callback";
 import { verifyDiscordRequest } from "./discord";
@@ -16,7 +17,7 @@ export interface Env {
 }
 
 export default {
-  async fetch(request: Request, env: Env): Promise<Response> {
+  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
 
     if (request.method === "GET" && url.pathname === "/verify") {
@@ -40,11 +41,11 @@ export default {
       if (interaction.type === 1) {
         return Response.json({ type: 1 });
       }
-      if (interaction.type === 2 && interaction.data?.name === "setup") {
-        return handleSetup(interaction, env, url.origin);
-      }
-      if (interaction.type === 2 && interaction.data?.name === "source") {
-        return handleSource();
+      if (interaction.type === 2) {
+        const name = interaction.data?.name;
+        if (name === "setup") return handleSetup(interaction, env, url.origin);
+        if (name === "source") return handleSource();
+        if (name === "statistics") return handleStatistics(interaction, env, ctx);
       }
       return Response.json({ type: 4, data: { content: "Unknown command.", flags: 64 } });
     }

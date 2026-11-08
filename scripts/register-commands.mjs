@@ -12,8 +12,6 @@ const env = Object.fromEntries(
 
 const url = `https://discord.com/api/v10/applications/${env.DISCORD_CLIENT_ID}/commands`;
 
-// PUT tüm global komut listesini değiştirir. Buradaki her komut kayıtlı kalır,
-// listede olmayanlar silinir. Bu yüzden tüm komutları burada tutuyoruz.
 const commands = [
   {
     name: "setup",
@@ -45,6 +43,20 @@ const commands = [
   {
     name: "source",
     description: "Show where to find Authify's source code",
+  },
+  {
+    name: "statistics",
+    description: "Count members who currently hold the verified role",
+    default_member_permissions: "32",
+    dm_permission: false,
+    options: [
+      {
+        type: 8,
+        name: "verified_role",
+        description: "The verified role to count",
+        required: true,
+      },
+    ],
   },
 ];
 
